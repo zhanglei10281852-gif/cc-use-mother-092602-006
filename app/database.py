@@ -293,6 +293,59 @@ CREATE TABLE IF NOT EXISTS compute_interventions (
     created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_compute_interventions_task ON compute_interventions(task_id,id);
+
+CREATE TABLE IF NOT EXISTS registry_entries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    payload_id TEXT NOT NULL,
+    run_id TEXT NOT NULL,
+    model_code TEXT NOT NULL,
+    parameter_version TEXT NOT NULL,
+    derated INTEGER NOT NULL CHECK(derated IN (0,1)),
+    radiation_dose REAL,
+    thermal_cycles INTEGER,
+    environment_json TEXT NOT NULL DEFAULT '{}',
+    summary_json TEXT NOT NULL,
+    metadata_digest TEXT NOT NULL,
+    summary_digest TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'registered' CHECK(status IN ('registered','published','retracted')),
+    version INTEGER NOT NULL DEFAULT 1,
+    registered_by TEXT NOT NULL,
+    published_by TEXT NOT NULL DEFAULT '',
+    published_at TEXT,
+    retracted_by TEXT NOT NULL DEFAULT '',
+    retracted_at TEXT,
+    retract_reason TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE(payload_id, run_id)
+);
+CREATE INDEX IF NOT EXISTS idx_registry_entries_status ON registry_entries(status,created_at);
+CREATE INDEX IF NOT EXISTS idx_registry_entries_conditions ON registry_entries(model_code,parameter_version,derated,radiation_dose,thermal_cycles);
+
+CREATE TABLE IF NOT EXISTS registry_annotations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    entry_id INTEGER NOT NULL REFERENCES registry_entries(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL CHECK(kind IN ('quality_label','review')),
+    label TEXT NOT NULL DEFAULT '',
+    comment TEXT NOT NULL DEFAULT '',
+    reviewer TEXT NOT NULL,
+    state TEXT NOT NULL DEFAULT 'active' CHECK(state IN ('active','retracted')),
+    retracted_by TEXT NOT NULL DEFAULT '',
+    retracted_at TEXT,
+    retract_reason TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_registry_annotations_entry ON registry_annotations(entry_id,state,kind);
+
+CREATE TABLE IF NOT EXISTS registry_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    entry_id INTEGER NOT NULL REFERENCES registry_entries(id) ON DELETE CASCADE,
+    action TEXT NOT NULL,
+    actor TEXT NOT NULL,
+    detail_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_registry_events_entry ON registry_events(entry_id,id);
 '''
 
 PERMISSIONS = [

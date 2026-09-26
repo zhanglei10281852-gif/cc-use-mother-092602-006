@@ -76,6 +76,39 @@ def command_compute_demo() -> int:
     return 0 if task.status_code == 202 and claimed.status_code == 200 and claimed.json().get("task") else 1
 
 
+def command_registry_demo() -> int:
+    payload = {
+        "model_code": "rad-hard-net",
+        "model_version": "3.2.1",
+        "payload_code": "thermal-calib",
+        "payload_version": "2026.09",
+        "conditions": {"radiation_dose": 50.0, "radiation_unit": "krad", "thermal_cycles": 120, "derated": False},
+        "executed_at": "2026-09-25T08:30:00+00:00",
+        "submitted_by": "cli-demo",
+        "source_refs": ["payload://thermal-calib/2026.09"],
+        "summary": {"drift_ppm": 12.4, "pass": True},
+    }
+    with TestClient(app) as client:
+        registered = client.post("/api/registry/runs", json=payload)
+        if registered.status_code not in {200, 201}:
+            print(registered.text)
+            return 1
+        uid = registered.json()["run_uid"]
+        published = client.post(f"/api/registry/runs/{uid}/publish", json={"actor": "cli-demo"})
+        sealed = client.get("/api/registry/runs?published_only=true")
+        withdrawn = client.post(f"/api/registry/runs/{uid}/withdraw", json={"reason": "演示撤回", "actor": "cli-demo"})
+    result = {
+        "run_uid": uid,
+        "registered": registered.status_code,
+        "published": published.status_code,
+        "sealed_items": sealed.json()["payload"]["count"],
+        "signed": bool(sealed.json().get("signature")),
+        "withdrawn": withdrawn.status_code,
+    }
+    print(json.dumps(result, ensure_ascii=False))
+    return 0 if result["published"] == 200 and result["signed"] and result["withdrawn"] == 200 else 1
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="compute-operations", description="科学计算任务运营服务维护入口")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -83,8 +116,15 @@ def main() -> int:
     subparsers.add_parser("check-db", help="检查数据库完整性")
     subparsers.add_parser("smoke", help="执行本地 API 冒烟检查")
     subparsers.add_parser("compute-demo", help="执行计算任务提交与领取演示")
+    subparsers.add_parser("registry-demo", help="执行结果登记簿登记、发布、签名查询与撤回演示")
     args = parser.parse_args()
-    return {"init-db": command_init, "check-db": command_check, "smoke": command_smoke, "compute-demo": command_compute_demo}[args.command]()
+    return {
+        "init-db": command_init,
+        "check-db": command_check,
+        "smoke": command_smoke,
+        "compute-demo": command_compute_demo,
+        "registry-demo": command_registry_demo,
+    }[args.command]()
 
 
 if __name__ == "__main__":
